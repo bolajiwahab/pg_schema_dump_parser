@@ -119,9 +119,11 @@ def parse_utility(stream: str, utility_type: str, append: bool = True) -> None:
 # TODO: in a case a table depends on a user-defined function, we can simply add a dummy function before the create table
 
 if __name__ == "__main__":
+    file_path = os.path.abspath(__file__)
     args_parser = argparse.ArgumentParser(
-        description=""" Parses schema dump from pg_dump into nicely arranged schema files """,
-        epilog=""" Written by Bolaji Wahab """)
+        description="""Generates nicely parsed schema files""",
+        epilog=f"example: {file_path} --directory . --configfile pg_schema_dump.config",
+                    formatter_class=argparse.RawDescriptionHelpFormatter)
     args_parser.add_argument('--directory', required=True, help="Directory to drop the schema files into")
     args_parser.add_argument('--configfile', required=True, help="Database configuration file, see sample")
     args = args_parser.parse_args()
