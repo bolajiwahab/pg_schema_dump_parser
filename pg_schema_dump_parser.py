@@ -60,6 +60,7 @@ def parse_schema(directory: str, object_type: str, schema: str, object_name: str
             with open(file_name, 'r+', encoding='utf-8') as file:
                 current_content = [e+';\n' for e in read_in_chunk(file, ';\n') if e]
                 line_found = any(definition in line for line in current_content)
+                # if definition does not exist, append it to the schema file
                 if not line_found:
                     file.seek(0, os.SEEK_END)
                     file.write(definition)
@@ -81,6 +82,13 @@ def parse_indexes(stream: str, object_type: str, append: bool = False) -> None:
     index_name = re.match(r"^CREATE .*INDEX (\w+) ON (\w+).(\w+)", stream, re.I).group(1)
     schema_name = re.match(r"^CREATE .*INDEX (\w+) ON (\w+).(\w+)", stream, re.I).group(2)
     parse_schema(args.directory, object_type, schema_name, index_name, stream, append)
+
+
+def parse_extensions(stream: str, object_type: str, append: bool = False) -> None:
+    """ Parses extensions """
+    extension_name = re.match(r"^CREATE EXTENSION.* (\w+) WITH SCHEMA (\w+)", stream, re.I).group(1)
+    schema_name = re.match(r"^CREATE EXTENSION.* (\w+) WITH SCHEMA (\w+)", stream, re.I).group(2)
+    parse_schema(args.directory, object_type, schema_name, extension_name, stream, append)
 
 
 def parse_function(host: str, dbname: str, port: str, user: str, password: str, stream: str, object_type: str, append: bool = False) -> None:
@@ -183,7 +191,7 @@ if __name__ == "__main__":
             if "SET DEFAULT" in segment:
                 parse_utility(segment, 'defaults')
             if segment.startswith("CREATE EXTENSION"):
-                parse_utility(segment, 'extensions')
+                parse_extensions(segment, 'extensions')
             if segment.startswith("CREATE SERVER"):
                 parse_utility(segment, 'servers')
             if segment.startswith("COMMENT"):

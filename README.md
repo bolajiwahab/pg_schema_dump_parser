@@ -1,8 +1,13 @@
 # pg_schema_dump_parser
 Generates nicely parsed schema files.
 
+Every schema qualified object is parsed into its own schema file while non-schema qualified objects are parsed as utilities with
+a generic schema name `all`.
+
 ## Requirements
-- Requires at least python3
+- python3.9 and above
+- pg_dump
+- psql
 
 ## Sample parsed schema
 ![plot](sample_schema.png)
