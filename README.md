@@ -18,4 +18,4 @@ a generic schema name `all`.
   ```
   ./pg_schema_dump_parser.py --directory . --configfile pg_schema_dump.config
   ```
-  P.S we are dumping the schema files into the current directory(.)
+  P.S In the above example, (.) translates to the current working directory.
