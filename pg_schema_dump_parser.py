@@ -71,15 +71,15 @@ def parse_schema(directory: str, object_type: str, schema: str, object_name: str
 def parse_object(stream: str, object_type: str, append: bool = False) -> None:
     """ Parses tables, views, materialized views, sequences, types, aggregates, alter table, constraints """
 
-    schema_name = re.match(r"^(CREATE TABLE|CREATE AGGREGATE|CREATE VIEW|CREATE MATERIALIZED VIEW|CREATE TYPE|CREATE SEQUENCE|CREATE FOREIGN TABLE|ALTER TABLE \w+|ALTER TABLE) (\w+).(\w+)", stream, re.I).group(2)
-    object_name = re.match(r"^(CREATE TABLE|CREATE AGGREGATE|CREATE VIEW|CREATE MATERIALIZED VIEW|CREATE TYPE|CREATE SEQUENCE|CREATE FOREIGN TABLE|ALTER TABLE \w+|ALTER TABLE) (\w+).(\w+)", stream, re.I).group(3)
+    schema_name = re.match(r"^(CREATE TABLE|CREATE AGGREGATE|CREATE .*VIEW|CREATE TYPE|CREATE SEQUENCE|CREATE FOREIGN TABLE|ALTER TABLE \w+|ALTER TABLE) (\w+).(\w+)", stream, re.I).group(2)
+    object_name = re.match(r"^(CREATE TABLE|CREATE AGGREGATE|CREATE .*VIEW|CREATE TYPE|CREATE SEQUENCE|CREATE FOREIGN TABLE|ALTER TABLE \w+|ALTER TABLE) (\w+).(\w+)", stream, re.I).group(3)
     parse_schema(args.directory, object_type, schema_name, object_name, stream, append)
 
 
 def parse_indexes(stream: str, object_type: str, append: bool = False) -> None:
     """ Parses indexes """
-    index_name = re.match(r"^CREATE.* INDEX (\w+) ON (\w+).(\w+)", stream, re.I).group(1)
-    schema_name = re.match(r"^CREATE.* INDEX (\w+) ON (\w+).(\w+)", stream, re.I).group(2)
+    index_name = re.match(r"^CREATE .*INDEX (\w+) ON (\w+).(\w+)", stream, re.I).group(1)
+    schema_name = re.match(r"^CREATE .*INDEX (\w+) ON (\w+).(\w+)", stream, re.I).group(2)
     parse_schema(args.directory, object_type, schema_name, index_name, stream, append)
 
 
