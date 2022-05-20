@@ -7,6 +7,7 @@ import subprocess
 import configparser
 import shutil
 
+APPLICATION_NAME = 'pg_schema_dump_parser'
 
 def read_in_chunk(stream: str, separator: str) -> str:
     """ Read in chunk https://stackoverflow.com/questions/47927039/reading-a-file-until-a-specific-character-in-python """
@@ -31,7 +32,7 @@ def pg_schema_dump(host: str, dbname: str, port: str, user: str, password: str) 
 
     with subprocess.Popen(
         ['pg_dump',
-         f"--dbname=postgresql://{user}:{password}@{host}:{port}/{dbname}",
+         f"--dbname=postgresql://{user}:{password}@{host}:{port}/{dbname}?application_name={APPLICATION_NAME}",
          "--schema-only",
          # '-f', dump_file,
          ],
@@ -103,13 +104,13 @@ def parse_function(host: str, dbname: str, port: str, user: str, password: str, 
 
     with subprocess.Popen(
         ['psql',
-         f"--dbname=postgresql://{user}:{password}@{host}:{port}/{dbname}",
+         f"--dbname=postgresql://{user}:{password}@{host}:{port}/{dbname}?application_name={APPLICATION_NAME}",
          "-A",
          "--no-align",
          "--no-psqlrc",
          "--tuples-only",
-         f"-c SELECT string_agg(pg_get_functiondef(f.oid), E';\n') || ';' AS def FROM (SELECT oid FROM pg_proc \
-             WHERE proname = '{func_name}' AND pronamespace = '{schema_name}'::regnamespace) AS f;"],
+         f"-c SELECT pg_catalog.string_agg(pg_catalog.pg_get_functiondef(f.oid), E';\n') || ';' AS def FROM (SELECT oid FROM pg_catalog.pg_proc \
+             WHERE proname = '{func_name}' AND pronamespace = '{schema_name}'::regnamespace) AS f"],
         stdout=subprocess.PIPE
          ) as func_def_proc:
 
