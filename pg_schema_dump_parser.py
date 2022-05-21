@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import logging
 import re
 import argparse
 import subprocess
@@ -8,6 +9,9 @@ import configparser
 import shutil
 
 APPLICATION_NAME = 'pg_schema_dump_parser'
+logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s', encoding='utf-8', level=logging.INFO, datefmt="%Y-%m-%d %H:%M:%S")
+logger = logging.getLogger(APPLICATION_NAME)
+
 
 def read_in_chunk(stream: str, separator: str) -> str:
     """ Read in chunk https://stackoverflow.com/questions/47927039/reading-a-file-until-a-specific-character-in-python """
@@ -30,17 +34,16 @@ def read_in_chunk(stream: str, separator: str) -> str:
 def pg_schema_dump(host: str, dbname: str, port: str, user: str, password: str) -> str:
     """ Get schema dump of postgres db """
 
-    with subprocess.Popen(
+    pg_dump_proc = subprocess.Popen(
         ['pg_dump',
          f"--dbname=postgresql://{user}:{password}@{host}:{port}/{dbname}?application_name={APPLICATION_NAME}",
          "--schema-only",
          # '-f', dump_file,
          ],
         stdout=subprocess.PIPE
-    ) as pg_dump_proc:
-        modified_dump = subprocess.Popen(['sed', '/^--/d;/^\\s*$/d;/^SET/d'], text=True, stdin=pg_dump_proc.stdout, stdout=subprocess.PIPE)  # pylint: disable=R1732
-        # pg_dump_proc.wait()
-        return modified_dump.stdout
+    )  # pylint: disable=R1732
+    modified_dump = subprocess.Popen(['sed', '/^--/d;/^\\s*$/d;/^SET/d'], text=True, stdin=pg_dump_proc.stdout, stdout=subprocess.PIPE)  # pylint: disable=R1732
+    return modified_dump.stdout
 
 
 def parse_schema(directory: str, object_type: str, schema: str, object_name: str, definition: str, append: bool) -> None:
@@ -73,8 +76,8 @@ def parse_schema(directory: str, object_type: str, schema: str, object_name: str
 def parse_object(stream: str, object_type: str, append: bool = False) -> None:
     """ Parses tables, views, materialized views, sequences, types, aggregates, alter table, constraints """
 
-    schema_name = re.match(r"^(CREATE TABLE|CREATE AGGREGATE|CREATE .*VIEW|CREATE TYPE|CREATE SEQUENCE|CREATE FOREIGN TABLE|ALTER TABLE \w+|ALTER TABLE) (\w+).(\w+)", stream, re.I).group(2)
-    object_name = re.match(r"^(CREATE TABLE|CREATE AGGREGATE|CREATE .*VIEW|CREATE TYPE|CREATE SEQUENCE|CREATE FOREIGN TABLE|ALTER TABLE \w+|ALTER TABLE) (\w+).(\w+)", stream, re.I).group(3)
+    schema_name = re.match(r"^(CREATE.*TABLE|COMMENT ON \w+|CREATE AGGREGATE|CREATE.*VIEW|CREATE TYPE|CREATE SEQUENCE|ALTER TABLE \w+|ALTER TABLE|GRANT.*ON \w+|REVOKE.*ON \w+|.*TRIGGER.*?ON|.*RULE.*\n.*?ON.*) (\w+).(\w+)", stream, re.I).group(2)
+    object_name = re.match(r"^(CREATE.*TABLE|COMMENT ON \w+|CREATE AGGREGATE|CREATE.*VIEW|CREATE TYPE|CREATE SEQUENCE|ALTER TABLE \w+|ALTER TABLE|GRANT.*ON \w+|REVOKE.*ON \w+|.*TRIGGER.*?ON|.*RULE.*\n.*?ON.*) (\w+).(\w+)", stream, re.I).group(3)
     parse_schema(args.directory, object_type, schema_name, object_name, stream, append)
 
 
@@ -122,7 +125,7 @@ def parse_function(host: str, dbname: str, port: str, user: str, password: str, 
 def parse_utility(stream: str, utility_type: str, append: bool = True) -> None:
     """ Parses utilitities such as triggers, ownerships, grants, extensions, comments, mappings, schemas, rules, events, servers """
 
-    parse_schema(args.directory, 'utilities', 'all', utility_type, stream, append)
+    parse_schema(args.directory, 'utilities', 'others', utility_type, stream, append)
 
 
 # TODO: in a case a table depends on a user-defined function, we can simply add a dummy function before the create table
@@ -151,16 +154,20 @@ if __name__ == "__main__":
         shutil.rmtree(f"{args.directory}/schema")
 
     with pg_schema_dump(postgres_host, postgres_db, postgres_port, postgres_user, postgres_password) as f:
-
+        logger.info(f"Started parser: {APPLICATION_NAME}")
         for segment in read_in_chunk(f, separator=';\n'):
             if segment:
                 segment = segment + ';\n'
-                if segment.startswith("CREATE TABLE"):
-                    parse_object(segment, 'tables')
+            if segment.startswith("CREATE TABLE"):
+                parse_object(segment, 'tables')
             if segment.startswith("ALTER TABLE") and "CLUSTER ON" in segment:
-                parse_object(segment, 'tables', True)
+                parse_object(segment, 'clustered_indexes', True)
             if segment.startswith("ALTER TABLE") and "ADD CONSTRAINT" in segment:
-                parse_object(segment, 'tables', True)
+                parse_object(segment, 'constraints', True)
+            if segment.startswith("ALTER TABLE") and "SET DEFAULT" in segment:
+                parse_object(segment, 'defaults', True)
+            if segment.startswith("ALTER TABLE") and ("ATTACH PARTITION" in segment or "INHERIT" in segment):
+                parse_object(segment, 'partitions', True)
             if segment.startswith("CREATE INDEX") or segment.startswith("CREATE UNIQUE INDEX"):
                 parse_indexes(segment, 'indexes')
             if segment.startswith("CREATE VIEW"):
@@ -177,25 +184,25 @@ if __name__ == "__main__":
                 parse_object(segment, 'types')
             if segment.startswith("CREATE SEQUENCE"):
                 parse_object(segment, 'sequences')
-            if segment.startswith("CREATE TRIGGER") or segment.startswith("CREATE CONSTRAINT TRIGGER"):
-                parse_utility(segment, 'triggers')
-            if segment.startswith("ALTER TRIGGER"):
-                parse_utility(segment, 'triggers')
+            if segment.startswith("CREATE TRIGGER") or segment.startswith("CREATE CONSTRAINT TRIGGER") or segment.startswith("ALTER TRIGGER"):
+                parse_object(segment, 'triggers', True)
             if segment.startswith("CREATE RULE"):
-                parse_utility(segment, 'rules')
+                parse_object(segment, 'rules', True)
             if segment.startswith("CREATE SCHEMA"):
                 parse_utility(segment, 'schemas')
-            if "OWNER TO" in segment or "OWNED BY" in segment:
+            if ("OWNER TO" in segment or "OWNED BY" in segment):
                 parse_utility(segment, 'ownerships')
-            if "GRANT" in segment or "REVOKE" in segment:
+            if ("GRANT" in segment or "REVOKE" in segment) and re.search(r"\w+\.\w+", segment):
+                parse_object(segment, 'grants', True)
+            if ("GRANT" in segment or "REVOKE" in segment) and not re.search(r"\w+\.\w+", segment):
                 parse_utility(segment, 'grants')
-            if "SET DEFAULT" in segment:
-                parse_utility(segment, 'defaults')
             if segment.startswith("CREATE EXTENSION"):
                 parse_extensions(segment, 'extensions')
             if segment.startswith("CREATE SERVER"):
                 parse_utility(segment, 'servers')
-            if segment.startswith("COMMENT"):
+            if segment.startswith("COMMENT") and re.search(r"\w+\.\w+", segment):
+                parse_object(segment, 'comments', True)
+            if segment.startswith("COMMENT") and not re.search(r"\w+\.\w+", segment):
                 parse_utility(segment, 'comments')
             if segment.startswith("CREATE EVENT TRIGGER"):
                 parse_utility(segment, 'events')
@@ -209,3 +216,4 @@ if __name__ == "__main__":
                 parse_utility(segment, 'subscriptions')
             if segment.startswith("ALTER SUBSCRIPTION") and "OWNER TO" not in segment:
                 parse_utility(segment, 'subscriptions')
+    logger.info("Schema parsed successfully")
