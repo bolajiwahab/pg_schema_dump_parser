@@ -13,9 +13,9 @@ a generic schema name `all`.
 ![plot](sample_schema.png)
 
 ## Running the program
-- Create `pg_schema_dump.config` with template `pg_schema_dump.config.sample` replacing the necessary values
+- Create `pg_schema_dump_parser.config` with template `pg_schema_dump_parser.config.sample` replacing the necessary values
 - Then you can call the program as such:
   ```
-  ./pg_schema_dump_parser.py --directory . --configfile pg_schema_dump.config
+  ./pg_schema_dump_parser.py --directory . --configfile pg_schema_dump_parser.config
   ```
   P.S In the above example, (.) translates to the current working directory.
