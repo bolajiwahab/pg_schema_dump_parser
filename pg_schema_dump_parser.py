@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 
 
 APPLICATION_NAME = 'pg_schema_dump_parser'
+warnings = False
 logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s', encoding='utf-8', level=logging.INFO, datefmt="%Y-%m-%d %H:%M:%S")
 logger = logging.getLogger(APPLICATION_NAME)
 
@@ -111,7 +112,7 @@ def parse_schema(directory: str, object_type: str, schema: str, object_name: str
 
 
 def parse_object(stream: str, object_type: str, append: bool = False) -> None:
-    """ Parses tables, views, materialized views, sequences, types, aggregates, alter table, constraints """
+    """ Parses tables, views, materialized views, sequences, types, aggregates, defaults, constraints, rules, triggers, clustered indexes, comments, extensions, foreign tables, grants, partitions """
 
     schema_name = re.match(r"^(CREATE.*TABLE|COMMENT ON \w+|CREATE AGGREGATE|CREATE.*VIEW|CREATE TYPE|CREATE SEQUENCE|ALTER TABLE \w+|ALTER TABLE|GRANT.*ON \w+|REVOKE.*ON \w+|.*TRIGGER.*?ON|.*RULE.*\n.*?ON.*) (\w+).(\w+)", stream, re.I).group(2)
     object_name = re.match(r"^(CREATE.*TABLE|COMMENT ON \w+|CREATE AGGREGATE|CREATE.*VIEW|CREATE TYPE|CREATE SEQUENCE|ALTER TABLE \w+|ALTER TABLE|GRANT.*ON \w+|REVOKE.*ON \w+|.*TRIGGER.*?ON|.*RULE.*\n.*?ON.*) (\w+).(\w+)", stream, re.I).group(3)
@@ -136,8 +137,8 @@ def parse_function(host: str, dbname: str, port: str, user: str, password: str, 
     """ Parses function definition """
 
     # see https://www.geeksforgeeks.org/postgresql-dollar-quoted-string-constants/
-    # because PG functions' bodies can be written as dollar quote and single quotes
-    # so we rely on solely on pg_get_functiondef for parsing functions
+    # because PG functions' bodies can be written as dollar quotes and single quotes
+    # we rely solely on pg_get_functiondef for parsing functions
 
     schema_name = re.match(r"^CREATE FUNCTION (\w+).(\w+)", stream, re.I).group(1)
     func_name = re.match(r"^CREATE FUNCTION (\w+).(\w+)", stream, re.I).group(2)
@@ -195,63 +196,79 @@ if __name__ == "__main__":
         for segment in read_in_chunk(f, separator=';\n'):
             if segment:
                 segment = segment + ';\n'
-            if segment.startswith("CREATE TABLE"):
+            if segment.startswith("CREATE TABLE") or segment.startswith("CREATE UNLOGGED TABLE"):
                 parse_object(segment, 'tables')
-            if segment.startswith("ALTER TABLE") and "CLUSTER ON" in segment:
+            elif (segment.startswith("ALTER TABLE") or segment.startswith("ALTER FOREIGN TABLE")) and "CLUSTER ON" in segment:
                 parse_object(segment, 'clustered_indexes', True)
-            if segment.startswith("ALTER TABLE") and "ADD CONSTRAINT" in segment:
+            elif segment.startswith("ALTER TABLE") and "ADD CONSTRAINT" in segment:
                 parse_object(segment, 'constraints', True)
-            if segment.startswith("ALTER TABLE") and "SET DEFAULT" in segment:
+            elif segment.startswith("ALTER TABLE") and "SET DEFAULT" in segment:
                 parse_object(segment, 'defaults', True)
-            if segment.startswith("ALTER TABLE") and ("ATTACH PARTITION" in segment or "INHERIT" in segment):
+            elif segment.startswith("ALTER TABLE") and ("ATTACH PARTITION" in segment or "INHERIT" in segment):
                 parse_object(segment, 'partitions', True)
-            if segment.startswith("CREATE INDEX") or segment.startswith("CREATE UNIQUE INDEX"):
+            elif segment.startswith("CREATE INDEX") or segment.startswith("CREATE UNIQUE INDEX"):
                 parse_indexes(segment, 'indexes')
-            if segment.startswith("CREATE VIEW"):
-                parse_object(segment, 'views')
-            if segment.startswith("CREATE MATERIALIZED VIEW"):
+            elif segment.startswith("CREATE VIEW") or segment.startswith("CREATE OR REPLACE VIEW"):
+                parse_object(segment, 'views', True)
+            elif segment.startswith("CREATE MATERIALIZED VIEW"):
                 parse_object(segment, 'materialized_views')
-            if segment.startswith("CREATE FOREIGN TABLE"):
+            elif segment.startswith("CREATE FOREIGN TABLE"):
                 parse_object(segment, 'foreign_tables')
-            if segment.startswith("CREATE AGGREGATE"):
+            elif segment.startswith("CREATE AGGREGATE"):
                 parse_object(segment, 'aggregates')
-            if segment.startswith("CREATE FUNCTION"):
+            elif segment.startswith("CREATE FUNCTION"):
                 parse_function(postgres_host, postgres_db, postgres_port, postgres_user, postgres_password, segment, 'functions')
-            if segment.startswith("CREATE TYPE"):
+            elif segment.startswith("CREATE TYPE"):
                 parse_object(segment, 'types')
-            if segment.startswith("CREATE SEQUENCE"):
+            elif segment.startswith("CREATE SEQUENCE"):
                 parse_object(segment, 'sequences')
-            if segment.startswith("CREATE TRIGGER") or segment.startswith("CREATE CONSTRAINT TRIGGER") or segment.startswith("ALTER TRIGGER"):
+            elif segment.startswith("CREATE TRIGGER") or segment.startswith("CREATE CONSTRAINT TRIGGER") or segment.startswith("ALTER TRIGGER") or "DISABLE TRIGGER" in segment or re.search(r"ENABLE.*TRIGGER", segment):
                 parse_object(segment, 'triggers', True)
-            if segment.startswith("CREATE RULE"):
+            elif segment.startswith("CREATE RULE") or segment.startswith("ALTER RULE") or "DISABLE RULE" in segment or re.search(r"ENABLE.*RULE", segment):
                 parse_object(segment, 'rules', True)
-            if segment.startswith("CREATE SCHEMA"):
+            elif segment.startswith("CREATE SCHEMA"):
                 parse_utility(segment, 'schemas')
-            if ("OWNER TO" in segment or "OWNED BY" in segment):
+            elif ("OWNER TO" in segment or "OWNED BY" in segment):
                 parse_utility(segment, 'ownerships')
-            if ("GRANT" in segment or "REVOKE" in segment) and re.search(r"\w+\.\w+", segment):
+            elif ("GRANT" in segment or "REVOKE" in segment) and re.search(r"\w+\.\w+", segment):
                 parse_object(segment, 'grants', True)
-            if ("GRANT" in segment or "REVOKE" in segment) and not re.search(r"\w+\.\w+", segment):
+            elif ("GRANT" in segment or "REVOKE" in segment) and not re.search(r"\w+\.\w+", segment):
                 parse_utility(segment, 'grants')
-            if segment.startswith("CREATE EXTENSION"):
+            elif segment.startswith("CREATE EXTENSION"):
                 parse_extensions(segment, 'extensions')
-            if segment.startswith("CREATE SERVER"):
+            elif segment.startswith("CREATE SERVER"):
                 parse_utility(segment, 'servers')
-            if segment.startswith("COMMENT") and re.search(r"\w+\.\w+", segment):
+            elif segment.startswith("COMMENT") and re.search(r"\w+\.\w+", segment):
                 parse_object(segment, 'comments', True)
-            if segment.startswith("COMMENT") and not re.search(r"\w+\.\w+", segment):
+            elif segment.startswith("COMMENT") and not re.search(r"\w+\.\w+", segment):
                 parse_utility(segment, 'comments')
-            if segment.startswith("CREATE EVENT TRIGGER"):
+            elif segment.startswith("CREATE EVENT TRIGGER") or segment.startswith("ALTER EVENT TRIGGER"):
                 parse_utility(segment, 'events')
-            if segment.startswith("CREATE USER MAPPING"):
+            elif segment.startswith("CREATE USER MAPPING"):
                 parse_utility(segment, 'mappings')
-            if segment.startswith("CREATE PUBLICATION"):
+            elif segment.startswith("CREATE PUBLICATION"):
                 parse_utility(segment, 'publications')
-            if segment.startswith("ALTER PUBLICATION") and "OWNER TO" not in segment:
+            elif segment.startswith("ALTER PUBLICATION") and "OWNER TO" not in segment:
                 parse_utility(segment, 'publications')
-            if segment.startswith("CREATE SUBSCRIPTION"):
+            elif segment.startswith("CREATE SUBSCRIPTION"):
                 parse_utility(segment, 'subscriptions')
-            if segment.startswith("ALTER SUBSCRIPTION") and "OWNER TO" not in segment:
+            elif segment.startswith("ALTER SUBSCRIPTION") and "OWNER TO" not in segment:
                 parse_utility(segment, 'subscriptions')
+            elif segment.startswith("ALTER TABLE") and "ADD GENERATED ALWAYS AS IDENTITY" in segment:
+                parse_object(segment, 'identities', True)
+            elif segment.startswith("ALTER TABLE") and re.search(r".*ROW LEVEL SECURITY", segment):
+                parse_object(segment, 'row_level_securities', True)
+            elif segment.startswith("ALTER TABLE") and re.search(r"REPLICA IDENTITY", segment):
+                parse_object(segment, 'replica_identities', True)
+            elif segment.startswith("CREATE") or segment.startswith("ALTER"):
+                # if there are segments not parsed by us, we simply raise a warning to inform the caller of such
+                # printing the segment
+                # if you notice this, kindly create an issue on https://github.com/bolajiwahab/pg_schema_dump_parser with
+                # the segment sample
+                logger.warning("Parsing of %s not yet implemented, kindly create an issue on https://github.com/bolajiwahab/pg_schema_dump_parser", segment)
+                warnings = True
     generate_metadata(args.directory, postgres_host, postgres_db, postgres_port, postgres_user, postgres_password)
-    logger.info("Schema parsed successfully")
+    if warnings:
+        logger.info("Schema parsing completed with warnings")
+    else:
+        logger.info("Schema parsing completed with no errors")
