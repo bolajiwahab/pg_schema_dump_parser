@@ -16,7 +16,7 @@ logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s', encoding='u
 logger = logging.getLogger(APPLICATION_NAME)
 
 
-def generate_metadata(directory: str, host: str, dbname: str, port: str, user: str, password: str) -> str:
+def generate_metadata(directory: str, host: str, dbname: str, port: str, user: str, password: str, warnings: bool) -> str:
     """ Generates metadata """
     database_version = subprocess.Popen(
         ['psql',
@@ -49,6 +49,7 @@ def generate_metadata(directory: str, host: str, dbname: str, port: str, user: s
             file.write(pg_dump_version + '\n')
             file.write(database_name + '\n')
             file.write(database_host + '\n')
+            file.write(f"warnings: {warnings}" + '\n')
 
 
 def read_in_chunk(stream: str, separator: str) -> str:
@@ -114,8 +115,8 @@ def parse_schema(directory: str, object_type: str, schema: str, object_name: str
 def parse_object(stream: str, object_type: str, append: bool = False) -> None:
     """ Parses tables, views, materialized views, sequences, types, aggregates, defaults, constraints, rules, triggers, clustered indexes, comments, extensions, foreign tables, grants, partitions """
 
-    schema_name = re.match(r"^(CREATE.*TABLE|COMMENT ON \w+|CREATE AGGREGATE|CREATE.*VIEW|CREATE TYPE|CREATE SEQUENCE|ALTER TABLE \w+|ALTER TABLE|GRANT.*ON \w+|REVOKE.*ON \w+|.*TRIGGER.*?ON|.*RULE.*\n.*?ON.*) (\w+).(\w+)", stream, re.I).group(2)
-    object_name = re.match(r"^(CREATE.*TABLE|COMMENT ON \w+|CREATE AGGREGATE|CREATE.*VIEW|CREATE TYPE|CREATE SEQUENCE|ALTER TABLE \w+|ALTER TABLE|GRANT.*ON \w+|REVOKE.*ON \w+|.*TRIGGER.*?ON|.*RULE.*\n.*?ON.*) (\w+).(\w+)", stream, re.I).group(3)
+    schema_name = re.match(r"^(CREATE.*TABLE|COMMENT ON \w+|CREATE AGGREGATE|CREATE.*VIEW|CREATE TYPE|CREATE SEQUENCE|ALTER.*TABLE \w+|ALTER.*TABLE|GRANT.*ON \w+|REVOKE.*ON \w+|.*TRIGGER.*?ON|.*RULE.*\n.*?ON.*) (\w+).(\w+)", stream, re.I).group(2)
+    object_name = re.match(r"^(CREATE.*TABLE|COMMENT ON \w+|CREATE AGGREGATE|CREATE.*VIEW|CREATE TYPE|CREATE SEQUENCE|ALTER.*TABLE \w+|ALTER.*TABLE|GRANT.*ON \w+|REVOKE.*ON \w+|.*TRIGGER.*?ON|.*RULE.*\n.*?ON.*) (\w+).(\w+)", stream, re.I).group(3)
     parse_schema(args.directory, object_type, schema_name, object_name, stream, append)
 
 
@@ -150,8 +151,8 @@ def parse_function(host: str, dbname: str, port: str, user: str, password: str, 
          "--no-align",
          "--no-psqlrc",
          "--tuples-only",
-         f"-c SELECT pg_catalog.string_agg(pg_catalog.pg_get_functiondef(f.oid), E';\n') || ';' AS def FROM (SELECT oid FROM pg_catalog.pg_proc \
-             WHERE proname = '{func_name}' AND pronamespace = '{schema_name}'::regnamespace) AS f"],
+         f"-c SELECT pg_catalog.string_agg(pg_catalog.pg_get_functiondef(f.oid), E';\n') || ';' AS def FROM (SELECT oid \
+             FROM pg_catalog.pg_proc WHERE proname = '{func_name}' AND pronamespace = '{schema_name}'::regnamespace) AS f"],
         stdout=subprocess.PIPE
          ) as func_def_proc:
 
@@ -196,35 +197,31 @@ if __name__ == "__main__":
         for segment in read_in_chunk(f, separator=';\n'):
             if segment:
                 segment = segment + ';\n'
-            if segment.startswith("CREATE TABLE") or segment.startswith("CREATE UNLOGGED TABLE"):
+            if segment.startswith(("CREATE TABLE", "CREATE UNLOGGED TABLE", "CREATE FOREIGN TABLE")):
                 parse_object(segment, 'tables')
-            elif (segment.startswith("ALTER TABLE") or segment.startswith("ALTER FOREIGN TABLE")) and "CLUSTER ON" in segment:
+            elif segment.startswith(("ALTER TABLE", "ALTER FOREIGN TABLE")) and "CLUSTER ON" in segment:
                 parse_object(segment, 'clustered_indexes', True)
-            elif segment.startswith("ALTER TABLE") and "ADD CONSTRAINT" in segment:
+            elif segment.startswith(("ALTER TABLE", "ALTER FOREIGN TABLE")) and "ADD CONSTRAINT" in segment:
                 parse_object(segment, 'constraints', True)
-            elif segment.startswith("ALTER TABLE") and "SET DEFAULT" in segment:
+            elif segment.startswith(("ALTER TABLE", "ALTER FOREIGN TABLE")) and "SET DEFAULT" in segment:
                 parse_object(segment, 'defaults', True)
-            elif segment.startswith("ALTER TABLE") and ("ATTACH PARTITION" in segment or "INHERIT" in segment):
+            elif segment.startswith(("ALTER TABLE", "ALTER FOREIGN TABLE")) and ("ATTACH PARTITION" in segment or "INHERIT" in segment):
                 parse_object(segment, 'partitions', True)
-            elif segment.startswith("CREATE INDEX") or segment.startswith("CREATE UNIQUE INDEX"):
+            elif segment.startswith(("CREATE INDEX", "CREATE UNIQUE INDEX")):
                 parse_indexes(segment, 'indexes')
-            elif segment.startswith("CREATE VIEW") or segment.startswith("CREATE OR REPLACE VIEW"):
+            elif segment.startswith(("CREATE VIEW", "CREATE OR REPLACE VIEW", "CREATE MATERIALIZED VIEW")):
                 parse_object(segment, 'views', True)
-            elif segment.startswith("CREATE MATERIALIZED VIEW"):
-                parse_object(segment, 'materialized_views')
-            elif segment.startswith("CREATE FOREIGN TABLE"):
-                parse_object(segment, 'foreign_tables')
             elif segment.startswith("CREATE AGGREGATE"):
                 parse_object(segment, 'aggregates')
-            elif segment.startswith("CREATE FUNCTION"):
+            elif segment.startswith(("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION")):
                 parse_function(postgres_host, postgres_db, postgres_port, postgres_user, postgres_password, segment, 'functions')
             elif segment.startswith("CREATE TYPE"):
                 parse_object(segment, 'types')
             elif segment.startswith("CREATE SEQUENCE"):
                 parse_object(segment, 'sequences')
-            elif segment.startswith("CREATE TRIGGER") or segment.startswith("CREATE CONSTRAINT TRIGGER") or segment.startswith("ALTER TRIGGER") or "DISABLE TRIGGER" in segment or re.search(r"ENABLE.*TRIGGER", segment):
+            elif segment.startswith(("CREATE TRIGGER", "CREATE CONSTRAINT TRIGGER", "ALTER TRIGGER")) or "DISABLE TRIGGER" in segment or re.search(r"ENABLE.*TRIGGER", segment):
                 parse_object(segment, 'triggers', True)
-            elif segment.startswith("CREATE RULE") or segment.startswith("ALTER RULE") or "DISABLE RULE" in segment or re.search(r"ENABLE.*RULE", segment):
+            elif segment.startswith(("CREATE RULE", "ALTER RULE")) or "DISABLE RULE" in segment or re.search(r"ENABLE.*RULE", segment):
                 parse_object(segment, 'rules', True)
             elif segment.startswith("CREATE SCHEMA"):
                 parse_utility(segment, 'schemas')
@@ -242,7 +239,7 @@ if __name__ == "__main__":
                 parse_object(segment, 'comments', True)
             elif segment.startswith("COMMENT") and not re.search(r"\w+\.\w+", segment):
                 parse_utility(segment, 'comments')
-            elif segment.startswith("CREATE EVENT TRIGGER") or segment.startswith("ALTER EVENT TRIGGER"):
+            elif segment.startswith(("CREATE EVENT TRIGGER", "ALTER EVENT TRIGGER")):
                 parse_utility(segment, 'events')
             elif segment.startswith("CREATE USER MAPPING"):
                 parse_utility(segment, 'mappings')
@@ -254,21 +251,22 @@ if __name__ == "__main__":
                 parse_utility(segment, 'subscriptions')
             elif segment.startswith("ALTER SUBSCRIPTION") and "OWNER TO" not in segment:
                 parse_utility(segment, 'subscriptions')
-            elif segment.startswith("ALTER TABLE") and "ADD GENERATED ALWAYS AS IDENTITY" in segment:
+            elif segment.startswith(("ALTER TABLE", "ALTER FOREIGN TABLE")) and "ADD GENERATED ALWAYS AS IDENTITY" in segment:
                 parse_object(segment, 'identities', True)
-            elif segment.startswith("ALTER TABLE") and re.search(r".*ROW LEVEL SECURITY", segment):
+            elif segment.startswith(("ALTER TABLE", "ALTER FOREIGN TABLE")) and re.search(r".*ROW LEVEL SECURITY", segment):
                 parse_object(segment, 'row_level_securities', True)
-            elif segment.startswith("ALTER TABLE") and re.search(r"REPLICA IDENTITY", segment):
+            elif segment.startswith(("ALTER TABLE", "ALTER FOREIGN TABLE")) and re.search(r"REPLICA IDENTITY", segment):
                 parse_object(segment, 'replica_identities', True)
-            elif segment.startswith("CREATE") or segment.startswith("ALTER"):
+            elif segment.startswith(("CREATE", "ALTER")):
                 # if there are segments not parsed by us, we simply raise a warning to inform the caller of such
                 # printing the segment
                 # if you notice this, kindly create an issue on https://github.com/bolajiwahab/pg_schema_dump_parser with
                 # the segment sample
                 logger.warning("Parsing of %s not yet implemented, kindly create an issue on https://github.com/bolajiwahab/pg_schema_dump_parser", segment)
                 warnings = True
-    generate_metadata(args.directory, postgres_host, postgres_db, postgres_port, postgres_user, postgres_password)
     if warnings:
+        generate_metadata(args.directory, postgres_host, postgres_db, postgres_port, postgres_user, postgres_password, warnings)
         logger.info("Schema parsing completed with warnings")
     else:
+        generate_metadata(args.directory, postgres_host, postgres_db, postgres_port, postgres_user, postgres_password, warnings)
         logger.info("Schema parsing completed with no errors")
