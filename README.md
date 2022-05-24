@@ -19,3 +19,7 @@ a generic schema name `all`.
   ./pg_schema_dump_parser.py --directory . --configfile pg_schema_dump_parser.config
   ```
   P.S In the above example, (.) translates to the current working directory.
+
+## Metadata
+A metadata is generated along with the schema files. It contains details of the database version, database host, database name, pg_dump version
+and warnings.
