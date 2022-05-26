@@ -1,5 +1,5 @@
 # pg_schema_dump_parser
-Generates nicely parsed schema files.
+Generates nicely parsed schema files for PostgreSQL.
 
 Every schema qualified object is parsed into its own schema file while non-schema qualified objects are parsed as utilities with
 a generic schema name `all`.
