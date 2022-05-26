@@ -1,13 +1,13 @@
 # pg_schema_dump_parser
 Generates nicely parsed schema files for PostgreSQL.
 
-Every schema qualified object is parsed into its own schema file while non-schema qualified objects are parsed as utilities with
-a generic schema name `all`.
+Every schema-qualified object is parsed into its own schema file while non-schema-qualified objects are parsed as utilities with
+a generic schema name `others`.
 
 ## Requirements
-- python3.9 and above
-- pg_dump
-- psql
+- `python3.9` and above
+- `pg_dump`
+- `psql`
 
 ## Sample parsed schema
 ![plot](sample_schema.png)
@@ -18,7 +18,7 @@ a generic schema name `all`.
   ```
   ./pg_schema_dump_parser.py --directory . --configfile pg_schema_dump_parser.config
   ```
-  P.S In the above example, (.) translates to the current working directory.
+  P.S In the above example, (`.`) translates to the current working directory.
 
 ## Metadata
 A metadata is generated along with the schema files. It contains details of the database version, database host, database name, pg_dump version
