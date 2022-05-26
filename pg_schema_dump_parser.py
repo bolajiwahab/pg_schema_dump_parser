@@ -199,6 +199,8 @@ if __name__ == "__main__":
                 segment = segment + ';\n'
             if segment.startswith(("CREATE TABLE", "CREATE UNLOGGED TABLE", "CREATE FOREIGN TABLE")):
                 parse_object(segment, 'tables')
+            elif segment.startswith(("ALTER TABLE", "ALTER FOREIGN TABLE")) and "ALTER COLUMN" in segment:
+                parse_object(segment, 'columns_mod', True)
             elif segment.startswith(("ALTER TABLE", "ALTER FOREIGN TABLE")) and "CLUSTER ON" in segment:
                 parse_object(segment, 'clustered_indexes', True)
             elif segment.startswith(("ALTER TABLE", "ALTER FOREIGN TABLE")) and "ADD CONSTRAINT" in segment:
