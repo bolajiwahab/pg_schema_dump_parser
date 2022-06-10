@@ -276,5 +276,3 @@ if __name__ == "__main__":
     else:
         generate_metadata(args.directory, postgres_host, postgres_db, postgres_port, postgres_user, postgres_password, elapsed_time, warnings)
         logger.info("Schema parsing completed with no errors in %s", elapsed_time)
-        # request_duration = (time() - start_time) * 1000
-        # formatted_request_duration = f"{request_duration:.2f}ms"
