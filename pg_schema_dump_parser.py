@@ -113,7 +113,7 @@ def parse_schema(directory: str, object_type: str, schema: str, object_name: str
 
 
 def parse_object(stream: str, object_type: str, append: bool = False) -> None:
-    """ Parses tables, views, materialized views, sequences, types, aggregates, defaults, constraints, rules, triggers, clustered indexes, comments, extensions, foreign tables, acls, partitions """
+    """ Parses tables, views, materialized views, sequences, types, aggregates, defaults, constraints, rules, triggers, clustered indexes, comments, extensions, foreign tables, partitions """
 
     schema_name = re.match(r"^(CREATE.*TABLE|COMMENT ON \w+|CREATE AGGREGATE|CREATE.*VIEW|CREATE TYPE|CREATE DOMAIN|CREATE SEQUENCE|ALTER.*TABLE \w+|ALTER.*TABLE|.*TRIGGER.*?ON|.*RULE.*\n.*?ON.*) (\w+).(\w+)", stream, re.I).group(2)
     object_name = re.match(r"^(CREATE.*TABLE|COMMENT ON \w+|CREATE AGGREGATE|CREATE.*VIEW|CREATE TYPE|CREATE DOMAIN|CREATE SEQUENCE|ALTER.*TABLE \w+|ALTER.*TABLE|.*TRIGGER.*?ON|.*RULE.*\n.*?ON.*) (\w+).(\w+)", stream, re.I).group(3)
