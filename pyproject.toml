@@ -1,0 +1,294 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.package-data]
+"pgrubic" = ["pgrubic.toml"]
+
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+tag_format = "$version"
+version_scheme = "semver2"
+version_provider = "pep621"
+update_changelog_on_bump = true
+bump_message = "chore(bump): version $current_version → $new_version"
+version_files = [
+    "README.md:rev",
+    "docs/docs/tutorial.md:rev",
+]
+
+[project]
+name = "pgmanifest"
+version = "0.0.1"
+description = "A tool to sort dumped PostgreSQL schema into manifests"
+readme = { file = "README.md", content-type = "text/markdown" }
+license = {file = "LICENSE"}
+requires-python = ">=3.12"
+authors = [{ name = "Bolaji Wahab", email = "bolajiwahab23@gmail.com" }]
+maintainers = [{ name = "Bolaji Wahab", email = "bolajiwahab23@gmail.com" }]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+  "Operating System :: MacOS :: MacOS X",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: SQL",
+  "Topic :: Database",
+  "Topic :: Utilities",
+  "Topic :: Software Development :: Quality Assurance"
+]
+keywords = ["pgrubic", "sql", "postgres", "postgresql", "linter"]
+dependencies = [
+  "pglast==7.3",
+  "case-converter==1.1.0",
+  "colorama==0.4.6",
+  "toml==0.10.2",
+  "click==8.1.8",
+  "rich==13.9.4",
+  "deepmerge==2.0",
+  "msgpack==1.1.0",
+  "GitPython==3.1.44",
+]
+
+[project.optional-dependencies]
+dev = [
+  "ruff==0.9.10",
+  "mypy==1.15.0",
+  "isort==6.0.1",
+  "add-trailing-comma==3.1.0",
+  "interrogate==1.7.0",
+  "pre-commit==4.1.0",
+  "pre-commit-hooks==5.0.0",
+  "yamllint==1.37.0",
+  "conventional-pre-commit==4.0.0",
+  "pytest==8.3.5",
+  "coverage==7.6.12",
+  "tox==4.24.2",
+  "types-PyYAML==6.0.12.20250402",
+  "types-toml==0.10.8.20240310",
+  "types-colorama==0.4.15.20240311",
+  "types-click==7.1.8",
+  "msgpack-types==0.5.0",
+]
+
+doc = [
+  "mkdocs==1.6.1",
+  "mkdocs-material==9.6.7",
+  "mkdocstrings==0.29.0",
+  "mkdocstrings-python==1.16.4",
+]
+
+[project.urls]
+Homepage = "https://github.com/bolajiwahab/pgrubic"
+Documentation = "https://github.com/bolajiwahab/pgrubic/blob/main/README.md"
+Repository = "https://github.com/bolajiwahab/pgrubic"
+"Issue Tracker" = "https://github.com/bolajiwahab/pgrubic/issues"
+Changelog = "https://github.com/bolajiwahab/pgrubic/blob/main/CHANGELOG.md"
+
+[project.scripts]
+pgrubic = "pgrubic.__main__:cli"
+
+[tool.mypy]
+python_version = "3.12"
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+strict = true
+strict_equality = true
+extra_checks = true
+show_error_codes = true
+no_implicit_reexport = true
+disallow_untyped_decorators = false
+
+[[tool.mypy.overrides]]
+module = ["pglast.*", "caseconverter.*", "pgrubic.*", "deepmerge.*"]
+ignore_missing_imports = true
+
+[tool.ruff]
+lint.select = ["ALL"]
+lint.ignore = ["N802", "ARG002", "ANN401", "D205", "N999", "ISC001", "COM812", "TC006"]
+line-length = 90
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.flake8-annotations]
+allow-star-arg-any = true
+
+[tool.ruff.lint.isort]
+length-sort = true
+known-first-party = ["pgrubic"]
+
+[tool.ruff.lint.flake8-builtins]
+builtins-allowed-modules = ["enum", "select", "typing"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+  "S101", # asserts allowed in tests...
+  "S105", # We are using a variable called "sql_pass"
+]
+"*formatters/**/*.py" = [
+  "PLR0915",
+  "PLR0912",
+  "C901",
+]
+
+[tool.isort]
+profile = "black"
+length_sort = true
+known_first_party = "pgrubic"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
+[tool.coverage.run]
+relative_files = true
+source = ["src"]
+omit = [
+  "tests/*"
+]
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "if __name__ == .__main__.:",
+]
+
+[tool.interrogate]
+fail-under = 100
+verbose = 1
+
+[tool.tox]
+legacy_tox_ini = """
+    [tox]
+    min_version = 4.0
+    env_list =
+        isort
+        lint
+        format
+        typing
+        tests
+        coverage
+        docbuild
+        prepare-release
+
+    [testenv]
+    skip_install = true
+    deps =
+    commands =
+
+    [testenv:commitlint]
+    deps = conventional-pre-commit
+    commands = conventional-pre-commit .git/COMMIT_EDITMSG
+
+    [testenv:prepare-release]
+    deps = commitizen
+    commands = cz bump
+
+    [testenv:tests]
+    skip_install = false
+    deps =
+        pytest
+        coverage
+        pyyaml
+    setenv =
+        COVERAGE_FILE = .coverage
+    commands =
+        coverage erase
+        coverage run -m pytest -vv {posargs:tests}
+
+    [testenv:tests-linux]
+    platform = linux
+    skip_install = false
+    deps = {[testenv:tests]deps}
+    setenv =
+        COVERAGE_FILE = .coverage
+    commands = {[testenv:tests]commands}
+
+    [testenv:tests-windows]
+    platform = win32
+    skip_install = false
+    deps = {[testenv:tests]deps}
+    setenv =
+        COVERAGE_FILE = .coverage
+    commands = {[testenv:tests]commands}
+
+    [testenv:tests-macos]
+    platform = darwin
+    skip_install = false
+    deps = {[testenv:tests]deps}
+    setenv =
+        COVERAGE_FILE = .coverage
+    commands = {[testenv:tests]commands}
+
+    [testenv:coverage]
+    skip_install = false
+    deps = {[testenv:tests]deps}
+    setenv =
+        COVERAGE_FILE = .coverage
+    commands =
+        {[testenv:tests]commands}
+        coverage report --fail-under=100 --show-missing {posargs}
+
+    [testenv:docstrings-coverage]
+    deps = interrogate
+    commands = interrogate {posargs}
+
+    [testenv:isort]
+    deps = isort
+    commands = isort --check --diff --profile=black {posargs:.}
+
+    [testenv:lint]
+    deps =
+        ruff
+        yamllint
+    commands =
+        ruff check {posargs} --fix
+        yamllint --strict {posargs:.}
+
+    [testenv:format]
+    deps = ruff
+    commands = ruff format {posargs}
+
+    [testenv:typing]
+    deps =
+        mypy
+        pytest
+        types-toml
+        types-colorama
+        types-click
+        rich
+        types-PyYAML
+        msgpack-types
+        GitPython
+    commands = mypy {posargs:.}
+
+    [testenv:docbuild]
+    commands =
+        # We need to build the project in order to generate the docs.
+        # Hence it fails with import errors.
+        pip install -e .
+        python docs/rule_docs_generator.py
+        python docs/settings_doc_generator.py
+
+    [testenv:ensure-docs-up-to-date]
+    allowlist_externals = ./tools/ensure_up_to_date_docs.sh
+    commands =
+        {[testenv:docbuild]commands}
+        ./tools/ensure_up_to_date_docs.sh
+
+    [testenv:pre-commit]
+    deps = pre-commit
+    commands = pre-commit {posargs:run --hook-stage pre-commit --all-files}
+
+    [testenv:build-dist]
+    deps = build
+    commands = python -m build --sdist --wheel {posargs:{toxinidir}}
+"""

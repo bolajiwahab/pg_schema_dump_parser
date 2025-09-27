@@ -1,2 +1,3 @@
 schema
 pg_schema_dump_parser.config
+.venv
